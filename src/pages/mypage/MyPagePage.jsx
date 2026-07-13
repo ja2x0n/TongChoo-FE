@@ -1,9 +1,364 @@
-// Frontend.md §5.8 — 다음 마일스톤에서 구현 예정 (P2)
-export default function MyPagePage() {
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { excuseApi } from "../../api/excuseApi";
+import { userApi } from "../../api/userApi";
+import { useAuthStore } from "../../store/useAuthStore";
+
+const targetLabels = {
+  TEACHER: "선생님",
+  PARENT: "부모님",
+  FRIEND: "친구",
+  LOVER: "연인",
+  TEAM_LEAD: "팀장",
+  TEAM_MEMBER: "팀원",
+};
+
+const toneLabels = {
+  MILD: "순한맛",
+  SLICK: "능글맞은맛",
+  DESPERATE: "목숨 걸기",
+  BULLSHIT: "개소리 모드",
+};
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function AftermathCountdownBadge({ days }) {
+  if (days === null || days === undefined) return null;
+
+  const isSoon = days <= 1;
+  const label = days === 0 ? "D-day" : `D-${days}`;
+
   return (
-    <main className="max-w-3xl mx-auto px-6 py-24 text-center">
-      <p className="text-sm font-medium text-brand-primary">추후 구현 예정</p>
-      <h1 className="mt-2 text-2xl font-bold text-navy-950">마이페이지</h1>
+    <span
+      className={[
+        "px-2 py-1 text-xs font-bold rounded-md whitespace-nowrap shrink-0",
+        isSoon ? "text-danger-text bg-danger-bg" : "text-brand-primary bg-brand-primary-soft",
+      ].join(" ")}
+    >
+      {label}
+    </span>
+  );
+}
+
+function DefaultAvatar() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full" aria-hidden="true">
+      <circle cx="50" cy="50" r="50" fill="#eef1f5" />
+      <circle cx="50" cy="40" r="18" fill="#c3cbd6" />
+      <path d="M50 60c-20 0-36 12-36 30v10h72V90c0-18-16-30-36-30z" fill="#c3cbd6" />
+    </svg>
+  );
+}
+
+export default function MyPagePage() {
+  const [profile, setProfile] = useState(null);
+  const [recentExcuses, setRecentExcuses] = useState([]);
+  const [nickname, setNickname] = useState("");
+  const [nicknameError, setNicknameError] = useState("");
+  const [nicknameSuccess, setNicknameSuccess] = useState("");
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "" });
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSavingNickname, setIsSavingNickname] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const updateAuthNickname = useAuthStore((state) => state.updateNickname);
+  const logout = useAuthStore((state) => state.logout);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMyPage() {
+      try {
+        setIsLoading(true);
+        setPageError("");
+
+        const [profileData, excusePage] = await Promise.all([
+          userApi.getMyProfile(),
+          excuseApi.getMyExcuses({ page: 0, size: 5 }),
+        ]);
+
+        if (!isMounted) return;
+
+        setProfile(profileData);
+        setNickname(profileData.nickname ?? "");
+        setRecentExcuses(excusePage.content ?? []);
+      } catch (error) {
+        if (isMounted) {
+          setPageError(error.message || "마이페이지 정보를 불러오지 못했습니다.");
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadMyPage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  async function handleNicknameSubmit(event) {
+    event.preventDefault();
+    const nextNickname = nickname.trim();
+
+    if (!nextNickname) {
+      setNicknameError("닉네임을 입력해주세요.");
+      return;
+    }
+
+    try {
+      setIsSavingNickname(true);
+      setNicknameError("");
+      setNicknameSuccess("");
+
+      const updatedProfile = await userApi.updateNickname({ nickname: nextNickname });
+      setProfile(updatedProfile);
+      updateAuthNickname(updatedProfile.nickname);
+      setNicknameSuccess("닉네임이 변경되었습니다.");
+    } catch (error) {
+      setNicknameError(error.message || "닉네임 변경에 실패했습니다.");
+    } finally {
+      setIsSavingNickname(false);
+    }
+  }
+
+  async function handlePasswordSubmit(event) {
+    event.preventDefault();
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      setPasswordError("현재 비밀번호와 새 비밀번호를 모두 입력해주세요.");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8 || passwordForm.newPassword.length > 20) {
+      setPasswordError("새 비밀번호는 8자 이상 20자 이하여야 합니다.");
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      setPasswordError("");
+      setPasswordSuccess("");
+
+      await userApi.updatePassword(passwordForm);
+      setPasswordForm({ currentPassword: "", newPassword: "" });
+      setPasswordSuccess("비밀번호가 변경되었습니다.");
+    } catch (error) {
+      setPasswordError(error.message || "비밀번호 변경에 실패했습니다.");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }
+
+  function handleLogout() {
+    logout();
+    navigate("/");
+  }
+
+  return (
+    <main className="max-w-7xl mx-auto px-6 py-10 bg-white">
+      {pageError && (
+        <p role="alert" className="mb-4 inline-block text-sm font-medium text-danger-text bg-danger-bg rounded-md px-3.5 py-2.5">
+          {pageError}
+        </p>
+      )}
+
+      <section aria-label="마이페이지" className="border border-border-soft rounded-lg">
+        <div className="p-6 sm:p-8">
+          {isLoading ? (
+            <p className="text-sm font-medium text-navy-500">마이페이지 정보를 불러오는 중...</p>
+          ) : (
+            <div className="flex flex-col items-center text-center sm:flex-row sm:items-center sm:text-left gap-4 sm:gap-5">
+              <div className="relative shrink-0">
+                {/* docs/ui/mypage.html 기준: 기본 프로필은 인물 실루엣 SVG를 사용한다. */}
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#eef1f5] overflow-hidden flex items-center justify-center">
+                  <DefaultAvatar />
+                </div>
+
+                {/* 프로필 사진 저장 API는 아직 없어서, HTML 디자인과 동일하게 파일 선택 UI까지만 둔다. */}
+                <label
+                  htmlFor="profile-photo-input"
+                  className="absolute bottom-0 right-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-brand-primary text-white flex items-center justify-center ring-2 ring-white cursor-pointer hover:bg-brand-primary-hover transition-colors"
+                  aria-label="프로필 사진 변경"
+                  title="프로필 사진 저장은 추후 지원 예정입니다."
+                >
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 8h2l2-3h8l2 3h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                </label>
+                <input type="file" id="profile-photo-input" name="profileImage" accept="image/*" className="sr-only" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <h1 className="text-xl font-bold text-navy-950">{profile?.nickname ?? "사용자"}</h1>
+                  <Link to="/rank" className="px-2 py-0.5 text-[10px] font-bold text-brand-primary bg-brand-primary-soft rounded-md hover:bg-[#d8ecfd] transition-colors whitespace-nowrap">
+                    {profile?.gradeLabel ?? "등급"} &rarr;
+                  </Link>
+                </div>
+                <p className="mt-1 text-sm font-normal text-navy-500">
+                  <span>{profile?.email ?? "-"}</span>
+                  <span className="mx-1.5 text-border-input">·</span>
+                  가입일 <span>{formatDate(profile?.createdAt)}</span>
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 sm:px-8 py-7 border-t border-border-soft">
+          <h2 className="text-base font-bold text-navy-950">계정 설정</h2>
+
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-border-soft gap-6 sm:gap-0">
+            <div className="sm:pr-8">
+              <h3 className="text-sm font-bold text-navy-700">닉네임 변경</h3>
+              {/* PATCH /api/users/me: 닉네임 변경 성공 시 헤더 닉네임도 같이 갱신한다. */}
+              <form onSubmit={handleNicknameSubmit} className="mt-3 flex flex-col gap-3">
+                <label htmlFor="nickname" className="sr-only">새 닉네임</label>
+                <input
+                  type="text"
+                  id="nickname"
+                  name="nickname"
+                  required
+                  maxLength={20}
+                  value={nickname}
+                  onChange={(event) => {
+                    setNickname(event.target.value);
+                    setNicknameError("");
+                    setNicknameSuccess("");
+                  }}
+                  className="w-full rounded-md border border-border-input px-3.5 py-2.5 text-sm text-navy-900 focus:outline-none focus:border-brand-primary transition"
+                />
+                <button
+                  type="submit"
+                  disabled={isSavingNickname}
+                  className="self-start px-5 py-2.5 text-sm font-bold text-white bg-brand-primary rounded-md shadow-[0_4px_10px_rgba(21,126,251,0.18)] hover:bg-brand-primary-hover hover:shadow-[0_5px_12px_rgba(21,126,251,0.22)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingNickname ? "저장 중..." : "저장"}
+                </button>
+              </form>
+              {nicknameError && <p role="alert" className="mt-2 text-sm font-medium text-danger-text">{nicknameError}</p>}
+              {nicknameSuccess && <p role="status" className="mt-2 text-sm font-medium text-suspicion-low-text">{nicknameSuccess}</p>}
+            </div>
+
+            <div className="sm:pl-8">
+              <h3 className="text-sm font-bold text-navy-700">비밀번호 변경</h3>
+              {/* PATCH /api/users/me/password: 성공해도 기존 JWT는 유지된다. */}
+              <form onSubmit={handlePasswordSubmit} className="mt-3 flex flex-col gap-3">
+                <div>
+                  <label htmlFor="current-password" className="block text-xs font-medium text-navy-500">현재 비밀번호</label>
+                  <input
+                    type="password"
+                    id="current-password"
+                    name="currentPassword"
+                    required
+                    autoComplete="current-password"
+                    value={passwordForm.currentPassword}
+                    onChange={(event) => {
+                      setPasswordForm((prev) => ({ ...prev, currentPassword: event.target.value }));
+                      setPasswordError("");
+                      setPasswordSuccess("");
+                    }}
+                    className="mt-1 w-full rounded-md border border-border-input px-3.5 py-2.5 text-sm text-navy-900 focus:outline-none focus:border-brand-primary transition"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="new-password" className="block text-xs font-medium text-navy-500">새 비밀번호</label>
+                  <input
+                    type="password"
+                    id="new-password"
+                    name="newPassword"
+                    required
+                    minLength={8}
+                    maxLength={20}
+                    autoComplete="new-password"
+                    value={passwordForm.newPassword}
+                    onChange={(event) => {
+                      setPasswordForm((prev) => ({ ...prev, newPassword: event.target.value }));
+                      setPasswordError("");
+                      setPasswordSuccess("");
+                    }}
+                    className="mt-1 w-full rounded-md border border-border-input px-3.5 py-2.5 text-sm text-navy-900 focus:outline-none focus:border-brand-primary transition"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="self-start px-5 py-2.5 text-sm font-bold text-white bg-brand-primary rounded-md shadow-[0_4px_10px_rgba(21,126,251,0.18)] hover:bg-brand-primary-hover hover:shadow-[0_5px_12px_rgba(21,126,251,0.22)] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isChangingPassword ? "변경 중..." : "변경하기"}
+                </button>
+              </form>
+              {passwordError && <p role="alert" className="mt-2 text-sm font-medium text-danger-text">{passwordError}</p>}
+              {passwordSuccess && (
+                <p role="status" className="mt-2 text-sm font-medium text-suspicion-low-text bg-suspicion-low-bg rounded-md px-3 py-2">
+                  {passwordSuccess}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 sm:px-8 pb-7 pt-5 border-t border-border-soft">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-navy-950">최근 변명</h2>
+            <Link to="/excuses" className="text-sm font-bold text-brand-primary hover:text-brand-primary-hover transition-colors whitespace-nowrap">
+              전체보기 &rarr;
+            </Link>
+          </div>
+          <p className="mt-1 text-sm font-normal text-navy-500">
+            아직 대비하지 못한 후폭풍이 있다면 D-day로 알려드려요.
+          </p>
+
+          <ul className="mt-3 divide-y divide-border-soft">
+            {recentExcuses.length === 0 ? (
+              <li className="py-5 text-sm font-normal text-navy-500">
+                아직 만든 변명이 없어요. 첫 변명을 만들어보세요.
+              </li>
+            ) : (
+              recentExcuses.map((excuse) => (
+                <li key={excuse.id} className="py-4 flex items-center justify-between gap-4">
+                  <Link to={`/excuses/${excuse.id}`} className="min-w-0 hover:text-brand-primary transition-colors">
+                    <p className="text-sm font-normal text-navy-900 truncate">{excuse.situation}</p>
+                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 text-[11px] font-medium text-brand-primary bg-brand-primary-soft rounded-md whitespace-nowrap">
+                        {targetLabels[excuse.target] ?? excuse.target} · {toneLabels[excuse.tone] ?? excuse.tone}
+                      </span>
+                      <span className="text-xs font-normal text-navy-300 whitespace-nowrap">{formatDate(excuse.createdAt)}</span>
+                    </div>
+                  </Link>
+                  <AftermathCountdownBadge days={excuse.nextAftermathInDays} />
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </section>
+
+      <div className="mt-8 text-center">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm font-bold text-danger-text hover:text-[#c8342f] transition-colors"
+        >
+          로그아웃
+        </button>
+      </div>
     </main>
-  )
+  );
 }
