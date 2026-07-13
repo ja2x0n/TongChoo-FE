@@ -69,12 +69,12 @@ export default function AppHeader() {
                                 [
                                     "px-5 py-2.5 text-base font-bold rounded-md transition-colors",
                                     isActive
-                                        ? "text-brand-primary bg-brand-primary-soft"
+                                        ? "text-brand-primary hover:bg-brand-primary-soft"
                                         : "text-navy-950 hover:bg-brand-primary-soft hover:text-brand-primary",
                                 ].join(" ")
                             }
                         >
-                            {nickname ?? "마이페이지"}님
+                            {nickname ? `${nickname}님` : "마이페이지"}
                         </NavLink>
                     </nav>
                 ) : (
