@@ -153,7 +153,10 @@ export default function ExcuseFormPage() {
 
       // 생성 결과는 바로 다음 화면에서 필요하다.
       // 그래서 zustand + sessionStorage에 저장해 새로고침에도 한 번은 복구할 수 있게 한다.
-      setLatestExcuse(excuse);
+      setLatestExcuse({
+        ...excuse,
+        situation: situation.trim(),
+      });
       navigate("/excuses/result");
     } catch (error) {
       setErrorMessage(error.message || "변명 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
