@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { excuseApi } from "../../api/excuseApi";
+import Dropdown from "../../components/common/Dropdown";
 import { useExcuseStore } from "../../store/useExcuseStore";
 
 const targetLabels = {
@@ -297,23 +298,16 @@ export default function ExcuseResultPage() {
               같은 변명을 더 그럴듯하게, 더 짧게, 더 뻔뻔하게 바꾸는 기능이에요.
             </p>
             <form onSubmit={handleEvolveSubmit} className="mt-4 flex flex-col gap-3">
-              <label htmlFor="evolve-direction" className="sr-only">진화 방향</label>
-              <select
-                id="evolve-direction"
+              <Dropdown
+                label="진화 방향"
+                placeholder="선택하세요"
                 value={selectedDirection}
-                onChange={(event) => {
-                  setSelectedDirection(event.target.value);
+                options={evolveOptions}
+                onChange={(value) => {
+                  setSelectedDirection(value);
                   setEvolveError("");
                 }}
-                className="w-full rounded-md border border-border-input bg-white px-3.5 py-2.5 text-sm text-navy-900 focus:outline-none focus:border-brand-primary transition"
-              >
-                <option value="">선택하세요</option>
-                {evolveOptions.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              />
 
               <button
                 type="submit"
