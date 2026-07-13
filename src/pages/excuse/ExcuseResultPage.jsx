@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { excuseApi } from "../../api/excuseApi";
 import { useExcuseStore } from "../../store/useExcuseStore";
 
 const targetLabels = {
@@ -23,6 +24,14 @@ const suspicionClassNames = {
   MEDIUM: "bg-suspicion-medium-bg text-suspicion-medium-text",
   HIGH: "bg-suspicion-high-bg text-suspicion-high-text",
 };
+
+const evolveOptions = [
+  { code: "MORE_PLAUSIBLE", label: "더 그럴듯하게" },
+  { code: "MORE_EMOTIONAL", label: "더 감성적으로" },
+  { code: "SHORTER", label: "더 짧게" },
+  { code: "DODGE_BLAME", label: "책임 회피" },
+  { code: "MORE_SHAMELESS", label: "더 뻔뻔하게" },
+];
 
 function formatDateTime(value) {
   if (!value) return "방금 전";
@@ -117,14 +126,20 @@ function AftermathTimeline({ aftermath }) {
 export default function ExcuseResultPage() {
   const latestExcuse = useExcuseStore((state) => state.latestExcuse);
   const getStoredLatestExcuse = useExcuseStore((state) => state.getStoredLatestExcuse);
+  const setLatestExcuse = useExcuseStore((state) => state.setLatestExcuse);
   const [notice, setNotice] = useState("");
+  const [selectedDirection, setSelectedDirection] = useState("");
+  const [evolveError, setEvolveError] = useState("");
+  const [isEvolving, setIsEvolving] = useState(false);
 
   // Zustand 상태는 새로고침하면 비어질 수 있다.
   // 그래서 /create에서 같이 저장해둔 sessionStorage 값을 한 번 더 읽어 결과를 복구한다.
-  const excuse = useMemo(
+  const initialExcuse = useMemo(
     () => latestExcuse ?? getStoredLatestExcuse(),
     [latestExcuse, getStoredLatestExcuse],
   );
+  const [currentExcuse, setCurrentExcuse] = useState(initialExcuse);
+  const excuse = currentExcuse;
 
   if (!excuse) {
     return (
@@ -149,6 +164,42 @@ export default function ExcuseResultPage() {
   const toneLabel = toneLabels[excuse.tone] ?? excuse.tone;
   const suspicionLevel = analysis.suspicionLevel ?? "MEDIUM";
   const roundNumber = excuse.roundNumber ?? 1;
+
+  async function handleEvolveSubmit(event) {
+    event.preventDefault();
+
+    if (!selectedDirection) {
+      setEvolveError("어떤 방향으로 바꿀지 선택해주세요.");
+      return;
+    }
+
+    try {
+      setIsEvolving(true);
+      setNotice("");
+      setEvolveError("");
+
+      const evolvedExcuse = await excuseApi.evolveExcuse({
+        excuseId: excuse.id,
+        direction: selectedDirection,
+      });
+
+      // 백엔드의 진화 응답에는 원본 입력 상황이 없을 수 있다.
+      // 화면 상단의 "상황" 표시를 유지하려고 기존 situation을 새 결과에 같이 붙인다.
+      const nextExcuse = {
+        ...evolvedExcuse,
+        situation: excuse.situation,
+      };
+
+      setCurrentExcuse(nextExcuse);
+      setLatestExcuse(nextExcuse);
+      setSelectedDirection("");
+      setNotice("변명이 선택한 방향으로 진화했어요.");
+    } catch (error) {
+      setEvolveError(error.message || "변명 진화에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsEvolving(false);
+    }
+  }
 
   function showPendingFeature(message) {
     setNotice(message);
@@ -245,13 +296,45 @@ export default function ExcuseResultPage() {
             <p className="mt-2 text-sm font-normal text-navy-500">
               같은 변명을 더 그럴듯하게, 더 짧게, 더 뻔뻔하게 바꾸는 기능이에요.
             </p>
-            <button
-              type="button"
-              onClick={() => showPendingFeature("변명 진화 기능은 다음 순서에서 API와 연결할게요.")}
-              className="mt-4 w-full px-5 py-2.5 text-sm font-bold text-white bg-brand-primary rounded-md shadow-[0_4px_10px_rgba(21,126,251,0.18)] hover:bg-brand-primary-hover transition-all"
-            >
-              진화 준비하기
-            </button>
+            <form onSubmit={handleEvolveSubmit} className="mt-4 flex flex-col gap-3">
+              <label htmlFor="evolve-direction" className="sr-only">진화 방향</label>
+              <select
+                id="evolve-direction"
+                value={selectedDirection}
+                onChange={(event) => {
+                  setSelectedDirection(event.target.value);
+                  setEvolveError("");
+                }}
+                className="w-full rounded-md border border-border-input bg-white px-3.5 py-2.5 text-sm text-navy-900 focus:outline-none focus:border-brand-primary transition"
+              >
+                <option value="">선택하세요</option>
+                {evolveOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="submit"
+                disabled={isEvolving}
+                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-brand-primary rounded-md shadow-[0_4px_10px_rgba(21,126,251,0.18)] hover:bg-brand-primary-hover transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isEvolving && (
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+                    <path className="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                )}
+                {isEvolving ? "진화시키는 중..." : "진화시키기"}
+              </button>
+
+              {evolveError && (
+                <p role="alert" className="text-sm font-medium text-danger-text">
+                  {evolveError}
+                </p>
+              )}
+            </form>
 
             {excuse.complexityWarning?.enabled && (
               <p className="mt-4 text-sm font-medium text-suspicion-medium-text bg-suspicion-medium-bg rounded-md px-3.5 py-2.5">
